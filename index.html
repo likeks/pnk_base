@@ -1174,17 +1174,31 @@
       return aliases[key] || String(value || '').trim();
     }
 
+    // Поисковые синонимы для сокращённых обозначений в тексте отказа.
+    // Например, «Iм» в симптоме должно находиться по запросам «магн», «магнет» и т.п.
+    function searchWordVariants(word) {
+      const normalized = normalizeText(String(word || ''));
+      if (normalized === 'iм') return ['iм', 'ток', 'магнетрона', 'магнетрон'];
+      return [normalized];
+    }
+
+    function wordMatchesQuery(word, token, queryStem) {
+      return searchWordVariants(word).some(variant => {
+        const variantStem = stemRu(variant);
+        return variant.includes(token) ||
+          (queryStem.length >= 3 && variantStem.startsWith(queryStem));
+      });
+    }
+
     function matchesQuery(item, query) {
       if (!query.trim()) return true;
       // Поиск выполняется исключительно по внешнему проявлению отказа.
       const fullText = normalizeText(item.symptom || '');
       const textWords = fullText.split(/[^а-яa-z0-9-]+/).filter(Boolean);
-      const textStems = textWords.map(stemRu);
-
       const queryTokens = normalizeText(query).split(/\s+/).filter(Boolean);
       return queryTokens.every(token => {
         const qStem = stemRu(token);
-        return textWords.some((w, idx) => w.includes(token) || (qStem.length >= 3 && textStems[idx].startsWith(qStem)));
+        return textWords.some(word => wordMatchesQuery(word, token, qStem));
       });
     }
 
@@ -1200,8 +1214,7 @@
       return escaped.replace(/(<[^>]+>)|([а-яА-ЯёЁa-zA-Z0-9-]+)/g, (full, tag, word) => {
         if (tag) return tag;
         const norm = normalizeText(word);
-        const mStem = stemRu(norm);
-        const hit = tokens.some((t, i) => norm.includes(t) || (stems[i].length >= 3 && mStem.startsWith(stems[i])));
+        const hit = tokens.some((t, i) => wordMatchesQuery(norm, t, stems[i]));
         return hit ? `<mark>${word}</mark>` : word;
       });
     }
