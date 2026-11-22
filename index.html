@@ -364,6 +364,14 @@
       margin-right: 4px;
     }
 
+    .annotation-box {
+      padding: 2px 4px;
+      font-size: 9px;
+      line-height: 1.25;
+      color: var(--text-muted);
+      opacity: 0.85;
+    }
+
     .photos-row {
       display: flex;
       gap: 8px;
@@ -558,12 +566,19 @@
       border-color: var(--accent-amber-border);
     }
 
+    .editor-block.is-annotation {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
+
     .editor-block-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 6px;
     }
+
+    .editor-block.is-annotation .block-type-tag { color: var(--text-muted); }
 
     .block-type-tag {
       font-size: 11.5px;
@@ -627,6 +642,12 @@
       color: var(--accent-amber);
       border-color: var(--accent-amber-border);
       background: var(--accent-amber-bg);
+    }
+
+    .btn-small.annotation-add {
+      color: var(--text-muted);
+      border-color: var(--border);
+      background: #f8fafc;
     }
 
     .branch-editor-row {
@@ -789,6 +810,7 @@
         <div class="add-buttons-row">
           <button type="button" class="btn-small" id="addVariantBtn">+ Способ устранения</button>
           <button type="button" class="btn-small note-add" id="addNoteBtn">+ Примечание</button>
+          <button type="button" class="btn-small annotation-add" id="addAnnotationBtn">+ Результата не дало:</button>
           <button type="button" class="btn-small entity-add" id="addEntityBtn">+ Сущность</button>
         </div>
       </div>
@@ -1136,13 +1158,26 @@
       return str.toLowerCase().replace(/ё/g, 'е');
     }
 
+    // Канонизация известных вариантов названий сущностей.
+    function normalizeEntityName(value) {
+      const key = normalizeText(String(value || '').trim())
+        .replace(/\s+/g, ' ')
+        .replace(/ё/g, 'е');
+      const aliases = {
+        'ток магнетрона': 'Ток магнетрона',
+        'iм': 'Ток магнетрона',
+        'ток апч': 'Ток АПЧ',
+        'iапч': 'Ток АПЧ',
+        'ток упч': 'Ток УПЧ',
+        'iупч': 'Ток УПЧ'
+      };
+      return aliases[key] || String(value || '').trim();
+    }
+
     function matchesQuery(item, query) {
       if (!query.trim()) return true;
-      const cleanSol = (item.solution || '')
-        .replace(/\[ПРИМ\]/gi, ' ')
-        .replace(/\[СУЩ\]/gi, ' ')
-        .replace(/\[Р:-?\d+\]/gi, ' ');
-      const fullText = normalizeText(`${item.symptom} ${cleanSol} ${item.note || ''}`);
+      // Поиск выполняется исключительно по внешнему проявлению отказа.
+      const fullText = normalizeText(item.symptom || '');
       const textWords = fullText.split(/[^а-яa-z0-9-]+/).filter(Boolean);
       const textStems = textWords.map(stemRu);
 
@@ -1252,7 +1287,13 @@
         const lines = solutionText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
         lines.forEach(line => {
-          if (/^\[ПРИМ\]/i.test(line)) {
+          if (/^\[ПРИПИСКА\]/i.test(line)) {
+            if (currentVariant) {
+              blocks.push(currentVariant);
+              currentVariant = null;
+            }
+            blocks.push({ type: 'annotation', text: line.replace(/^\[ПРИПИСКА\]\s*/i, '') });
+          } else if (/^\[ПРИМ\]/i.test(line)) {
             if (currentVariant) {
               blocks.push(currentVariant);
               currentVariant = null;
@@ -1263,7 +1304,7 @@
               blocks.push(currentVariant);
               currentVariant = null;
             }
-            blocks.push({ type: 'entity', text: line.replace(/^\[СУЩ\]\s*/i, '') });
+            blocks.push({ type: 'entity', text: normalizeEntityName(line.replace(/^\[СУЩ\]\s*/i, '')) });
           } else if (line.startsWith('*')) {
             if (currentVariant) blocks.push(currentVariant);
             currentVariant = {
@@ -1309,6 +1350,12 @@
           if (block.text) {
             block.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
               lines.push(`[СУЩ] ${line}`);
+            });
+          }
+        } else if (block.type === 'annotation') {
+          if (block.text) {
+            block.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+              lines.push(`[ПРИПИСКА] ${line}`);
             });
           }
         } else if (block.type === 'note') {
@@ -1410,22 +1457,26 @@
 
         const blocksHtml = blocks.map(block => {
           if (block.type === 'entity') {
-            return `<div class="entity-box"><span class="entity-label">Сущность:</span>${highlightText(block.text, query)}</div>`;
+            return `<div class="entity-box"><span class="entity-label">Сущность:</span>${highlightText(block.text, '')}</div>`;
           }
 
           if (block.type === 'note') {
-            return `<div class="note-box"><span class="note-label">Примечание:</span>${highlightText(block.text, query)}</div>`;
+            return `<div class="note-box"><span class="note-label">Примечание:</span>${highlightText(block.text, '')}</div>`;
+          }
+
+          if (block.type === 'annotation') {
+            return `<div class="annotation-box"><span class="note-label">Результата не дало:</span>${highlightText(block.text, '')}</div>`;
           }
 
           const branchesHtml = block.branches.length
             ? `<div class="tree-branches">
-                ${block.branches.map(b => `<div class="tree-branch"><span class="branch-arrow">↳</span>${highlightText(b, query)}</div>`).join('')}
+                ${block.branches.map(b => `<div class="tree-branch"><span class="branch-arrow">↳</span>${highlightText(b, '')}</div>`).join('')}
                </div>`
             : '';
 
           return `
             <div class="solution-variant">
-              ${block.title ? `<div class="solution-variant-title">${highlightText(block.title, query)}</div>` : ''}
+              ${block.title ? `<div class="solution-variant-title">${highlightText(block.title, '')}</div>` : ''}
               ${branchesHtml}
             </div>
           `;
@@ -1526,6 +1577,24 @@
           </div>
         </div>
         <textarea class="form-control note-text-input" rows="1">${escapeHtml(text)}</textarea>
+      `;
+      return div;
+    }
+
+    function createAnnotationEditorBlock(text = '') {
+      const div = document.createElement('div');
+      div.className = 'editor-block is-annotation';
+      div.dataset.type = 'annotation';
+      div.innerHTML = `
+        <div class="editor-block-header">
+          <span class="block-type-tag">Результата не дало:</span>
+          <div class="block-controls">
+            <button type="button" class="btn-icon" onclick="moveEditorBlock(this, -1)">↑</button>
+            <button type="button" class="btn-icon" onclick="moveEditorBlock(this, 1)">↓</button>
+            <button type="button" class="btn-icon btn-danger" onclick="this.closest('.editor-block').remove()">✕</button>
+          </div>
+        </div>
+        <textarea class="form-control annotation-text-input" rows="1" style="font-size:11px;">${escapeHtml(text)}</textarea>
       `;
       return div;
     }
@@ -1635,6 +1704,8 @@
               blocksList.appendChild(createEntityEditorBlock(b.text));
             } else if (b.type === 'note') {
               blocksList.appendChild(createNoteEditorBlock(b.text));
+            } else if (b.type === 'annotation') {
+              blocksList.appendChild(createAnnotationEditorBlock(b.text));
             } else {
               blocksList.appendChild(createVariantEditorBlock(b.title, b.branches));
             }
@@ -1670,6 +1741,12 @@
 
     document.getElementById('addNoteBtn').onclick = () => {
       const block = createNoteEditorBlock();
+      document.getElementById('blocksEditorList').appendChild(block);
+      requestAnimationFrame(() => autoResizeTextarea(block.querySelector('textarea')));
+    };
+
+    document.getElementById('addAnnotationBtn').onclick = () => {
+      const block = createAnnotationEditorBlock();
       document.getElementById('blocksEditorList').appendChild(block);
       requestAnimationFrame(() => autoResizeTextarea(block.querySelector('textarea')));
     };
@@ -1787,7 +1864,12 @@
         if (block.dataset.type === 'entity') {
           const entityVal = block.querySelector('.entity-text-input').value.trim();
           if (entityVal) {
-            serializedBlocks.push({ type: 'entity', text: entityVal });
+            serializedBlocks.push({ type: 'entity', text: normalizeEntityName(entityVal) });
+          }
+        } else if (block.dataset.type === 'annotation') {
+          const annotationVal = block.querySelector('.annotation-text-input').value.trim();
+          if (annotationVal) {
+            serializedBlocks.push({ type: 'annotation', text: annotationVal });
           }
         } else if (block.dataset.type === 'note') {
           const noteVal = block.querySelector('.note-text-input').value.trim();
