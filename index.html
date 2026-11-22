@@ -787,14 +787,14 @@
       <div class="form-group">
         <div id="blocksEditorList"></div>
         <div class="add-buttons-row">
-          <button type="button" class="btn-small entity-add" id="addEntityBtn">+ Сущность</button>
           <button type="button" class="btn-small" id="addVariantBtn">+ Способ устранения</button>
           <button type="button" class="btn-small note-add" id="addNoteBtn">+ Примечание</button>
+          <button type="button" class="btn-small entity-add" id="addEntityBtn">+ Сущность</button>
         </div>
       </div>
 
       <div class="form-group">
-        <label class="form-label">Фотографии</label>
+        <label class="form-label">Добавить фото</label>
         <div id="photosEditorList" class="photos-row" style="margin-bottom:8px;"></div>
         <input type="file" id="photoFileInput" accept="image/*" multiple style="display:none;">
         <button type="button" class="btn-small" id="uploadPhotoBtn">+ Прикрепить фото</button>
@@ -1230,7 +1230,7 @@
       listEl.innerHTML = candidates.map(c => `
         <div class="similar-item">
           <div class="similar-text">${escapeHtml(c.item.symptom)}</div>
-          <button type="button" class="similar-open-btn" onclick="openEditor(${c.item.id})">Открыть</button>
+          <button type="button" class="similar-open-btn" onclick="openEditor(${c.item.id})">Открыть и дополнить</button>
         </div>
       `).join('');
 
