@@ -893,25 +893,64 @@
       renderCards();
     }
 
+    
     async function checkSession() {
       const cached = loadCache();
-      if (cached && Array.isArray(cached.faults) && cached.faults.length) {
+      const hasCache = cached &&
+        Array.isArray(cached.faults) &&
+        cached.faults.length > 0;
+
+      // Сразу показываем сохранённую копию, пока проверяется авторизация.
+      if (hasCache) {
         APP_STATE.canEdit = Boolean(cached.canEdit);
         APP_STATE.userEmail = cached.userEmail || '';
         APP_STATE.userName = cached.userName || '';
         APP_STATE.roleNames = cached.roleNames || {};
         APP_STATE.faults = cached.faults;
-        setSyncStatus(false, 'Кэш • обновление...');
+
+        setSyncStatus(false, 'Кэш • проверка авторизации...');
         renderMainShell();
       }
 
-      const { data: { session } } = await sb.auth.getSession();
-      if (session && session.user) {
-        await initAuthorizedApp(session.user);
-      } else if (!cached || !cached.faults || !cached.faults.length) {
-        showAuthScreen();
+      try {
+        // Не позволяем проверке сессии зависнуть бесконечно.
+        const sessionResult = await Promise.race([
+          sb.auth.getSession(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Время ожидания авторизации истекло')), 12000)
+          )
+        ]);
+
+        if (sessionResult.error) {
+          throw sessionResult.error;
+        }
+
+        const session = sessionResult.data?.session;
+
+        if (session && session.user) {
+          await initAuthorizedApp(session.user);
+          return;
+        }
+
+        if (hasCache) {
+          setSyncStatus(false, 'Кэш • нажмите «Выйти» для повторного входа');
+        } else {
+          showAuthScreen('Войдите в систему для загрузки базы.');
+        }
+
+      } catch (error) {
+        console.warn('Ошибка восстановления сессии:', error);
+
+        if (hasCache) {
+          setSyncStatus(false, 'Офлайн-копия • нажмите «Выйти» для входа');
+        } else {
+          showAuthScreen(
+            'Не удалось проверить авторизацию. Проверьте подключение и попробуйте ещё раз.'
+          );
+        }
       }
     }
+
 
     function showAuthScreen(errorMsg = '') {
       document.getElementById('authScreen').style.display = 'flex';
